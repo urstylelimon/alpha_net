@@ -1,0 +1,101 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Alpha Net Transcription</title>
+    <style>
+        body { font-family: sans-serif; padding: 20px; text-align: center; }
+        button { padding: 10px 20px; margin: 10px; cursor: pointer; }
+        #final { border: 1px solid #ccc; padding: 20px; min-height: 100px; margin-top: 20px; text-align: left;}
+        #partial { color: #888; font-style: italic; min-height: 20px; }
+    </style>
+</head>
+<body>
+    <h1>Microphone to Text (CPU Only)</h1>
+    <button id="startBtn">Start Recording</button>
+    <button id="stopBtn" disabled>Stop</button>
+
+    <h3>Result:</h3>
+    <div id="final"></div>
+    <div id="partial"></div>
+
+    <script>
+        let socket;
+        let mediaStream;
+        let audioContext;
+        let processor;
+
+        const startBtn = document.getElementById('startBtn');
+        const stopBtn = document.getElementById('stopBtn');
+        const finalDiv = document.getElementById('final');
+        const partialDiv = document.getElementById('partial');
+
+        startBtn.onclick = async () => {
+            socket = new WebSocket('ws://' + window.location.host + '/ws/transcribe/');
+
+            socket.onopen = async () => {
+                startBtn.disabled = true;
+                stopBtn.disabled = false;
+
+
+                mediaStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+                audioContext = new AudioContext();
+                const input = audioContext.createMediaStreamSource(mediaStream);
+
+
+                processor = audioContext.createScriptProcessor(4096, 1, 1);
+                input.connect(processor);
+                processor.connect(audioContext.destination);
+
+                processor.onaudioprocess = (e) => {
+                    if (socket.readyState === WebSocket.OPEN) {
+                        const inputData = e.inputBuffer.getChannelData(0);
+
+                        const downsampled = downsampleBuffer(inputData, audioContext.sampleRate, 16000);
+                        socket.send(downsampled);
+                    }
+                };
+            };
+
+            socket.onmessage = (e) => {
+                const data = JSON.parse(e.data);
+                if (data.type === 'final') {
+                    finalDiv.innerHTML += " " + data.text;
+                    partialDiv.innerHTML = "";
+                } else if (data.type === 'partial') {
+                    partialDiv.innerHTML = data.text;
+                }
+            };
+        };
+
+        stopBtn.onclick = () => {
+            startBtn.disabled = false;
+            stopBtn.disabled = true;
+            if(socket) socket.close();
+            if(mediaStream) mediaStream.getTracks().forEach(t => t.stop());
+            if(processor) processor.disconnect();
+            if(audioContext) audioContext.close();
+        };
+
+        function downsampleBuffer(buffer, sampleRate, outSampleRate) {
+            if (outSampleRate == sampleRate) return convertFloat32ToInt16(buffer);
+            const sampleRateRatio = sampleRate / outSampleRate;
+            const newLength = Math.round(buffer.length / sampleRateRatio);
+            const result = new Int16Array(newLength);
+            let offsetResult = 0;
+            let offsetBuffer = 0;
+            while (offsetResult < result.length) {
+                const nextOffsetBuffer = Math.round((offsetResult + 1) * sampleRateRatio);
+                let accum = 0, count = 0;
+                for (let i = offsetBuffer; i < nextOffsetBuffer && i < buffer.length; i++) {
+                    accum += buffer[i];
+                    count++;
+                }
+                result[offsetResult] = Math.min(1, accum / count) * 0x7FFF;
+                offsetResult++;
+                offsetBuffer = nextOffsetBuffer;
+            }
+            return result.buffer;
+        }
+    </script>
+</body>
+</html>
