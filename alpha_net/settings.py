@@ -13,21 +13,24 @@ SECRET_KEY = 'django-insecure-hp)1hh7#v_rv3ix_&i9s__pe5yzfwxb%p7+e+undkr!-w$2zgy
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = True
 
-ALLOWED_HOSTS = []
+ALLOWED_HOSTS = ['*']
 
 
 # Application definition
 
 INSTALLED_APPS = [
+    'daphne',
+
     'django.contrib.admin',
     'django.contrib.auth',
     'django.contrib.contenttypes',
     'django.contrib.sessions',
     'django.contrib.messages',
     'django.contrib.staticfiles',
+    # Own Apps
     'transcription.apps.TranscriptionConfig',
-    #Own Apps
-    'transcription'
+    'rest_framework',
+    'channels',
 ]
 
 MIDDLEWARE = [
@@ -58,6 +61,9 @@ TEMPLATES = [
     },
 ]
 
+# Tells Django to use our ASGI configuration for WebSockets
+
+ASGI_APPLICATION = 'alpha_net.asgi.application'
 WSGI_APPLICATION = 'alpha_net.wsgi.application'
 
 
