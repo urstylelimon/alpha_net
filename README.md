@@ -32,9 +32,9 @@ Download the AI Model (Critical Step)
 
 The AI model is not included in the source code to minimize file size. You must download it manually.
 
-    Download the Vosk Small English Model (approx. 40MB):
+Download the Vosk Small English Model (approx. 40MB):
 
-    https://alphacephei.com/vosk/models/vosk-model-small-en-us-0.15.zip
+You must have the [Vosk English Model](https://alphacephei.com/vosk/models/vosk-model-small-en-us-0.15.zip).
 
     Create a folder named model in the root of the project directory.
 
@@ -44,13 +44,14 @@ Before starting the server for the first time, you must generate and apply the d
 
 Run these commands in your terminal:
 
-**Build the container:**
-
-`docker-compose build`
-
 **Generate Migration Files:**
+For first time only
 
 `docker-compose run web python manage.py makemigrations`
+
+**Build the container and run Server:**
+
+`docker-compose up --build`
 
 
 Now that the model, database and SERVER are ready:
