@@ -8,38 +8,38 @@ from .models import TranscriptionSession
 MODEL_PATH = "model/vosk-model-small-en-us-0.15"
 
 if os.path.exists(MODEL_PATH):
-    print("Vosk Model Found. Loading...")
+    print("Vosk Model Found.")
     vosk_model = vosk.Model(MODEL_PATH)
     print("Model Loaded.")
 else:
-    print(f"CRITICAL: Model not found at {MODEL_PATH}")
+    print(f"Model not found at {MODEL_PATH}")
     vosk_model = None
 
 
 class TranscriptionConsumer(WebsocketConsumer):
     def connect(self):
-        print("DEBUG: Client is trying to connect...")
+        print("Client is trying to connect...")
         if not vosk_model:
-            print("DEBUG: Closing connection because Model is missing.")
+            print("Closing connection because Model is missing.")
             self.close()
             return
 
         self.accept()
-        print("DEBUG: Connection Accepted!")
+        print("Connection Accepted!")
 
         self.recognizer = vosk.KaldiRecognizer(vosk_model, 16000)
         self.session = TranscriptionSession.objects.create()
         self.start_timestamp = datetime.now()
 
     def disconnect(self, close_code):
-        print("DEBUG: Client Disconnected.")
+        print("Client Disconnected.")
         end_time = datetime.now()
         duration = (end_time - self.start_timestamp).total_seconds()
 
         final_json = json.loads(self.recognizer.FinalResult())
         final_text = final_json.get('text', '')
 
-        print(f"DEBUG: Saving Session. Duration: {duration}s. Final text: {final_text}")
+        print(f"Saving Session. Duration: {duration}s. Final text: {final_text}")
 
         self.session.end_time = end_time
         self.session.duration_seconds = duration
@@ -53,7 +53,7 @@ class TranscriptionConsumer(WebsocketConsumer):
                 result = json.loads(self.recognizer.Result())
                 text = result.get('text', '')
                 if text:
-                    print(f"DEBUG: Final Sentence Found -> '{text}'")
+                    print(f"Final Sentence Found -> '{text}'")
                     self.session.final_transcript += " " + text
                     self.session.save()
                     self.send(text_data=json.dumps({'type': 'final', 'text': text}))
@@ -61,5 +61,5 @@ class TranscriptionConsumer(WebsocketConsumer):
                 partial = json.loads(self.recognizer.PartialResult())
                 partial_text = partial['partial']
                 if partial_text:
-                    print(f"DEBUG: Partial -> '{partial_text}'")
+                    print(f"Partial -> '{partial_text}'")
                     self.send(text_data=json.dumps({'type': 'partial', 'text': partial_text}))
