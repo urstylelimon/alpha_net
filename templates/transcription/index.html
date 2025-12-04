@@ -1,22 +1,41 @@
 <!DOCTYPE html>
 <html>
 <head>
-    <title>Alpha Net Transcription</title>
+    <title>Alpha Net - Real Time Transcription</title>
     <style>
-        body { font-family: sans-serif; padding: 20px; text-align: center; }
-        button { padding: 10px 20px; margin: 10px; cursor: pointer; }
-        #final { border: 1px solid #ccc; padding: 20px; min-height: 100px; margin-top: 20px; text-align: left;}
-        #partial { color: #888; font-style: italic; min-height: 20px; }
+        body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; padding: 40px; max-width: 800px; margin: 0 auto; background-color: #f9f9f9; }
+        h1 { color: #333; }
+        .controls { margin-bottom: 20px; background: white; padding: 20px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
+        button { padding: 10px 20px; font-size: 16px; cursor: pointer; border: none; border-radius: 4px; margin-right: 10px; }
+        #startBtn { background-color: #28a745; color: white; }
+        #stopBtn { background-color: #dc3545; color: white; }
+        button:disabled { background-color: #ccc; cursor: not-allowed; }
+
+        .transcript-box { background: white; border: 1px solid #ddd; padding: 20px; min-height: 150px; border-radius: 8px; margin-top: 20px; line-height: 1.6; }
+        #final-text { color: #000; }
+        #partial-text { color: #888; font-style: italic; }
+        .stats { margin-top: 10px; font-size: 0.9em; color: #555; }
     </style>
 </head>
 <body>
-    <h1>Microphone to Text (CPU Only)</h1>
-    <button id="startBtn">Start Recording</button>
-    <button id="stopBtn" disabled>Stop</button>
 
-    <h3>Result:</h3>
-    <div id="final"></div>
-    <div id="partial"></div>
+    <h1>Real-Time Transcription</h1>
+
+    <div class="controls">
+        <button id="startBtn">Start Recording</button>
+        <button id="stopBtn" disabled>Stop</button>
+        <span id="status">Status: Ready</span>
+    </div>
+
+    <h3>Live Transcript</h3>
+    <div class="transcript-box">
+        <span id="final-text"></span>
+        <span id="partial-text"></span>
+    </div>
+
+    <div class="stats" id="stats-area" style="display:none;">
+        <strong>Session Complete.</strong> Total Words: <span id="word-count" style="color: blue; font-weight: bold;">0</span>
+    </div>
 
     <script>
         let socket;
@@ -26,58 +45,76 @@
 
         const startBtn = document.getElementById('startBtn');
         const stopBtn = document.getElementById('stopBtn');
-        const finalDiv = document.getElementById('final');
-        const partialDiv = document.getElementById('partial');
+        const statusSpan = document.getElementById('status');
+        const finalSpan = document.getElementById('final-text');
+        const partialSpan = document.getElementById('partial-text');
+        const statsArea = document.getElementById('stats-area');
+        const wordCountSpan = document.getElementById('word-count');
 
         startBtn.onclick = async () => {
+            statusSpan.innerText = "Connecting...";
+            // Hide stats from previous run
+            statsArea.style.display = 'none';
+            finalSpan.innerText = "";
+            partialSpan.innerText = "";
+
             socket = new WebSocket('ws://' + window.location.host + '/ws/transcribe/');
 
             socket.onopen = async () => {
+                statusSpan.innerText = "Recording...";
                 startBtn.disabled = true;
                 stopBtn.disabled = false;
 
-
+                // Audio Setup
                 mediaStream = await navigator.mediaDevices.getUserMedia({ audio: true });
                 audioContext = new AudioContext();
-                const input = audioContext.createMediaStreamSource(mediaStream);
-
-
+                const source = audioContext.createMediaStreamSource(mediaStream);
                 processor = audioContext.createScriptProcessor(4096, 1, 1);
-                input.connect(processor);
+
+                source.connect(processor);
                 processor.connect(audioContext.destination);
 
                 processor.onaudioprocess = (e) => {
+                    const inputData = e.inputBuffer.getChannelData(0);
+                    const downsampled = downsampleBuffer(inputData, audioContext.sampleRate, 16000);
                     if (socket.readyState === WebSocket.OPEN) {
-                        const inputData = e.inputBuffer.getChannelData(0);
-
-                        const downsampled = downsampleBuffer(inputData, audioContext.sampleRate, 16000);
                         socket.send(downsampled);
                     }
                 };
             };
 
-            socket.onmessage = (e) => {
-                const data = JSON.parse(e.data);
+            socket.onmessage = (event) => {
+                const data = JSON.parse(event.data);
                 if (data.type === 'final') {
-                    finalDiv.innerHTML += " " + data.text;
-                    partialDiv.innerHTML = "";
+                    finalSpan.innerText += " " + data.text;
+                    partialSpan.innerText = "";
                 } else if (data.type === 'partial') {
-                    partialDiv.innerHTML = data.text;
+                    partialSpan.innerText = data.text;
                 }
             };
         };
 
         stopBtn.onclick = () => {
+            statusSpan.innerText = "Stopped";
             startBtn.disabled = false;
             stopBtn.disabled = true;
+
+            // Close connections
             if(socket) socket.close();
-            if(mediaStream) mediaStream.getTracks().forEach(t => t.stop());
-            if(processor) processor.disconnect();
             if(audioContext) audioContext.close();
+            if(mediaStream) mediaStream.getTracks().forEach(t => t.stop());
+
+            // Calculate Word Count for display
+            const text = finalSpan.innerText;
+            // Split by whitespace and filter out empty strings
+            const count = text.trim().split(/\s+/).filter(w => w.length > 0).length;
+
+            wordCountSpan.innerText = count;
+            statsArea.style.display = 'block';
         };
 
         function downsampleBuffer(buffer, sampleRate, outSampleRate) {
-            if (outSampleRate == sampleRate) return convertFloat32ToInt16(buffer);
+            if (outSampleRate == sampleRate) return buffer;
             const sampleRateRatio = sampleRate / outSampleRate;
             const newLength = Math.round(buffer.length / sampleRateRatio);
             const result = new Int16Array(newLength);
